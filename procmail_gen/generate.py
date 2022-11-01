@@ -36,6 +36,16 @@ def main():
     print("FROM=`formail -xFrom: | sed -e 's/ *(.*)//; s/>.*//; s/.*[:<] *//'`")
     print('MAILSERVER=$1')
     print('')
+    print('# https://stackoverflow.com/questions/29715013')
+    print('# Store "may be encoded" Subject: into $SUBJECT after conversion to UTF-8')
+    print(':0 h')
+    print('* ^Subject:.*=\\?')
+    print('SUBJECT=| formail -cXSubject: | perl -MEncode=from_to -pe \'from_to $_, "MIME-Header", "utf-8"\'')
+    print('')
+    print('# Store all remaining cases of Subject: into $SUBJECT')
+    print(':0 hE')
+    print('SUBJECT=| formail -cXSubject:')
+    print('')
     for file_name in args.config_file_names:
         logger.debug(f'Reading "{file_name}"...')
         with open(file_name, 'r') as fp:
@@ -50,13 +60,16 @@ def main():
                 rules = row.get(header_name, {})
                 assert all(k in ['is', 'contains', 'startswith'] for k in rules.keys())
                 for type_name, transform in [
-                    ('is', lambda x: f'{header_name}: {re.escape(x)}$'),
-                    ('contains', lambda x: f'{header_name}: .+{re.escape(x)}'),
-                    ('startswith', lambda x: f'{header_name}: {re.escape(x)}'),
+                    ('is', lambda x: f'{re.escape(x)}$'),
+                    ('contains', lambda x: f'.+{re.escape(x)}'),
+                    ('startswith', lambda x: f'{re.escape(x)}'),
                 ]:
                     for s in rules.get(type_name, []):
                         print(':0:')
-                        print(f'* ^{transform(s)}')
+                        if header_name == 'Subject':
+                            print(f'* SUBJECT ?? ^Subject: {transform(s)}')
+                        else:
+                            print(f'* ^{header_name}: {transform(s)}')
                         print(f'.{destination_folder.replace("/", ".")}/')
                         print('')
 
